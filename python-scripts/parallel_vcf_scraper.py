@@ -67,7 +67,6 @@ def get_args() -> Namespace:
     return args
 # --------------------------------------------------
 def _find_SNP_regions(args, _chromosome_dict: dict, _chromosome_name: str, _anchor: tuple):
-
     i, (key, value) = _anchor
 
     snp_regions: list = []
@@ -96,16 +95,14 @@ def _mp_find_SNP_regions(args, _chromosome_dict: dict, _chromosome_name: str):
 
     map_args = []
     for i, (key, value) in enumerate(_chromosome_dict.items()):
-        map_args.append(tuple([_chromosome_dict, _chromosome_name, i, (key, value)]))
-        break
-    print(map_args)
+        map_args.append(tuple([args, _chromosome_dict, _chromosome_name, (i, (key, value))]))
 
     map_args = tuple(map_args)
     with Pool() as pool:
-        x = pool.starmap(_find_SNP_regions, map_args)
-    print(x)
-    quit()
+        snp_regions_raw = pool.starmap(_find_SNP_regions, map_args)
 
+    for snp_region in snp_regions_raw:
+        if snp_region: snp_regions += snp_region
 
     return snp_regions
 
