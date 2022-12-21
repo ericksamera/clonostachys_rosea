@@ -15,6 +15,7 @@ from pathlib import Path
 # --------------------------------------------------
 import pandas as pd
 from datetime import datetime
+from multiprocessing import Pool
 # --------------------------------------------------
 def get_args() -> Namespace:
     """ Get command-line arguments """
@@ -51,6 +52,12 @@ def get_args() -> Namespace:
         type=int,
         default=0,
         help='minumum density to be considered in the summary (default=0)')
+    parser.add_argument(
+        '--snp_rep_min',
+        metavar='FLOAT',
+        type=float,
+        default=0.9,
+        help='minumum sample representation of SNP to be counted')
 
     args = parser.parse_args()
 
@@ -59,22 +66,26 @@ def get_args() -> Namespace:
 
     return args
 # --------------------------------------------------
-
 def _find_SNP_regions(args, _chromosome_dict: dict, _chromosome_name: str):
     """
     """
     snp_regions: list = []
 
     for i, (key, value) in enumerate(_chromosome_dict.items()):
-        for ii, (key_ii, value_ii) in enumerate(list(_chromosome_dict.items())[i+1:]):
+        for ii, (key_ii, value_ii) in enumerate(list(_chromosome_dict.items())[i:]):
             region_range: int = (int(key_ii) - int(key))
             if args.region_min < region_range < args.range:
+
+                samples: list = [sample.strip() for sample in list(value_ii.keys()) if sample not in ('CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT')]
+                snp_representation: list = [value_ii[sample] for sample in samples if value_ii[sample] != '.:.:.:.:.:.:.:.']
+                if len(snp_representation)/len(samples) < args.snp_rep_min: continue
+
                 region_range_str: str = f"{_chromosome_name}:{key}-{key_ii}"
                 
                 snp_count = int(ii+1)
                 if snp_count < args.snp_min: continue
                 snp_density = snp_count/region_range
-                snp_regions.append((region_range_str, region_range, snp_count, snp_density))
+                snp_regions.append((region_range_str, region_range, snp_count, snp_density, len(snp_representation)/len(samples)))
     return snp_regions
 
 def _parse_vcf(args, _vcf_path: Path) -> dict:
@@ -97,8 +108,12 @@ def main() -> None:
     """ Insert docstring here """
 
     args = get_args()
-    vcf_dict = _parse_vcf(args, args.input_path)
 
+    print(f'{" ".join(datetime.now().isoformat(timespec="seconds").split("T"))} Parsing the VCF ...')
+    vcf_dict = _parse_vcf(args, args.input_path)
+    print(f'{" ".join(datetime.now().isoformat(timespec="seconds").split("T"))} Parsed!')
+
+    print(f'{" ".join(datetime.now().isoformat(timespec="seconds").split("T"))} Iterating across the SNPs ...')
     snp_region_list: list = []
     for chrom in vcf_dict:
         snp_region_list += _find_SNP_regions(args, vcf_dict[chrom], chrom)
@@ -107,7 +122,7 @@ def main() -> None:
 
     snp_region_dataframe = pd.DataFrame(
         sorted(snp_region_list, reverse=True, key=lambda x: x[3]),
-        columns=['chrom:start-end', 'range length (bp)', 'SNPs contained', 'SNP density (0-1)'])
+        columns=['chrom:start-end', 'range length (bp)', 'SNPs contained', 'SNP density (0-1)', '%% rep. in samples (0-1)'])
     
     output_file = Path(__file__).parent.joinpath('SNP_regions.csv')
     snp_region_dataframe.to_csv(output_file, index=False)
