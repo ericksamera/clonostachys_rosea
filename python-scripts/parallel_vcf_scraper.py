@@ -113,7 +113,7 @@ def _mp_find_SNP_regions(args, _chromosome_dict: dict, _chromosome_name: str):
         map_args.append(tuple([args, _chromosome_dict, _chromosome_name, (i, (key, value))]))
 
     map_args = tuple(map_args)
-    with Pool() as pool:
+    with Pool(processes=8) as pool:
         snp_regions_raw = pool.starmap(_find_SNP_regions, map_args)
 
     for snp_region in snp_regions_raw:
