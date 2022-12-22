@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 from multiprocessing import Pool
+from collections import Counter
 # --------------------------------------------------
 def get_args() -> Namespace:
     """ Get command-line arguments """
@@ -70,21 +71,35 @@ def _find_SNP_regions(args, _chromosome_dict: dict, _chromosome_name: str, _anch
     i, (key, value) = _anchor
 
     snp_regions: list = []
+    genotypes: list = []
 
     for ii, (key_ii, value_ii) in enumerate(list(_chromosome_dict.items())[i:]):
         region_range: int = (int(key_ii) - int(key))
         if args.region_min < region_range < args.range:
 
             samples: list = [sample.strip() for sample in list(value_ii.keys()) if sample not in ('CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO', 'FORMAT')]
+            if not genotypes:
+                genotypes = list(['']*len(samples))
             snp_representation: list = [value_ii[sample] for sample in samples if value_ii[sample] != '.:.:.:.:.:.:.:.']
+            genotypes_at_this_position = [value_ii[sample].split(':')[0] for sample in samples]
             if len(snp_representation)/len(samples) < args.snp_rep_min: continue
+            for i, genotype in enumerate(genotypes_at_this_position):
+                genotypes[i] += f"|{genotype}"
+            
+
+            variability = len(Counter(genotypes))/ii
+
+            number_of_genotypes = len(Counter([genotype for genotype in genotypes if genotype.count('.')/ii < 0.5]))
+            adjusted_variability = len(Counter([genotype for genotype in genotypes if genotype.count('.')/ii < 0.5]))/ii
+
 
             region_range_str: str = f"{_chromosome_name}:{key}-{key_ii}"
             
             snp_count = int(ii+1)
             if snp_count < args.snp_min: continue
             snp_density = snp_count/region_range
-            snp_regions.append((region_range_str, region_range, snp_count, snp_density, len(snp_representation)/len(samples)))
+            snp_regions.append((region_range_str, region_range, snp_count, snp_density, len(snp_representation)/len(samples), variability, adjusted_variability, number_of_genotypes))
+        elif region_range > args.range: break
     return snp_regions
 
 
@@ -140,7 +155,15 @@ def main() -> None:
 
     snp_region_dataframe = pd.DataFrame(
         sorted(snp_region_list, reverse=True, key=lambda x: x[3]),
-        columns=['chrom:start-end', 'range length (bp)', 'SNPs contained', 'SNP density (0-1)', '%% rep. in samples (0-1)'])
+        columns=[
+            'chrom:start-end', 
+            'range length (bp)', 
+            'SNPs contained', 
+            'SNP density (0-1)', 
+            '%% rep. in samples (0-1)', 
+            'variability (# of genotypes/# of SNPs)', 
+            'adjusted variability',
+            'number of genotypes'])
     
     output_file = Path(__file__).parent.joinpath('SNP_regions.csv')
     snp_region_dataframe.to_csv(output_file, index=False)
