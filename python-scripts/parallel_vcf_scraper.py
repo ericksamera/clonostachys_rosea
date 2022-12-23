@@ -101,26 +101,32 @@ def _find_SNP_regions(args, _chromosome_dict: dict, _chromosome_name: str, _anch
             snp_regions.append((region_range_str, region_range, snp_count, snp_density, len(snp_representation)/len(samples), variability, adjusted_variability, number_of_genotypes))
         elif region_range > args.range: break
     return snp_regions
-
-
 def _mp_find_SNP_regions(args, _chromosome_dict: dict, _chromosome_name: str):
     """
     """
     snp_regions: list = []
 
     map_args = []
-    for i, (key, value) in enumerate(_chromosome_dict.items()):
-        map_args.append(tuple([args, _chromosome_dict, _chromosome_name, (i, (key, value))]))
+    if args.multiprocess:
+        for i, (key, value) in enumerate(_chromosome_dict.items()):
+            map_args.append(tuple([args, _chromosome_dict, _chromosome_name, (i, (key, value))]))
+    else:
+        map_args = [[], [], [], []]
+        for i, (key, value) in enumerate(_chromosome_dict.items()):
+            map_args[0].append(args)
+            map_args[1].append(_chromosome_dict)
+            map_args[2].append(_chromosome_name)
+            map_args[3].append((i, (key, value)))
 
     map_args = tuple(map_args)
-    with Pool(processes=8) as pool:
-        snp_regions_raw = pool.starmap(_find_SNP_regions, map_args)
-
+    if args.multiprocess:
+        with Pool(processes=4) as pool:
+            snp_regions_raw = pool.starmap(_find_SNP_regions, map_args)
+    else: snp_regions_raw = [result for result in  map(_find_SNP_regions, *map_args)]
     for snp_region in snp_regions_raw:
         if snp_region: snp_regions += snp_region
 
     return snp_regions
-
 def _parse_vcf(args, _vcf_path: Path) -> dict:
     """
     """
@@ -136,11 +142,11 @@ def _parse_vcf(args, _vcf_path: Path) -> dict:
                 if line_dict['CHROM'] not in vcf_dict: vcf_dict[line_dict['CHROM']] = {}
                 vcf_dict[line_dict['CHROM']].update({line_dict['POS']: line_dict})
     return vcf_dict
-
 def main() -> None:
     """ Insert docstring here """
 
     args = get_args()
+    args.multiprocess = False
 
     print(f'{" ".join(datetime.now().isoformat(timespec="seconds").split("T"))} Parsing the VCF ...')
     vcf_dict = _parse_vcf(args, args.input_path)
