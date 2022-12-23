@@ -130,3 +130,4 @@ dmypy.json
 *.csv
 example-data-short.vcf
 results.vcf
+clonostachys_rosea.vcf
